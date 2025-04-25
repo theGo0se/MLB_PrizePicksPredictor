@@ -1,0 +1,47 @@
+import gspread
+from google.oauth2.service_account import Credentials
+import pandas as pd
+import numpy as np
+
+def authenticate_gspread(creds_file, scope):
+    credentials = Credentials.from_service_account_file(creds_file, scopes=scope)
+    client = gspread.authorize(credentials)
+    return client
+
+def open_spreadsheet(client, spreadsheet_name):
+    spreadsheet = client.open(spreadsheet_name)
+    return spreadsheet
+
+def import_csv_to_sheet(spreadsheet, csv_file, sheet_name):
+    df = pd.read_csv(csv_file)
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(how='all', inplace=True)
+    values = [df.columns.values.tolist()] + df.fillna("").values.tolist()
+    sheet = spreadsheet.worksheet(sheet_name)
+    sheet.clear()
+    sheet.update(values)
+
+def main():
+    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    CREDS_FILE = r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\Google Service Account JSON Key.json"
+    SPREADSHEET_NAME = 'NBA - Prize Picks Predictor'
+
+    csv_files = {
+        r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\prizepicks_mlb_props.csv": 'Prize Picks RAW',
+        r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\player_status.csv": 'Underdog RAW',
+        r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\hitting_gamelogs.csv": 'MLB API RAW - Hitting Game Logs',
+        r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\pitching_gamelogs.csv": 'MLB API RAW - Pitching Game Logs'
+        #,r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\career_averages.csv": 'NBA API RAW - Career Stats'
+
+    }
+
+    client = authenticate_gspread(CREDS_FILE, SCOPE)
+    spreadsheet = open_spreadsheet(client, SPREADSHEET_NAME)
+
+    for csv_file, sheet_name in csv_files.items():
+        import_csv_to_sheet(spreadsheet, csv_file, sheet_name)
+
+    print("CSV files have been successfully imported into the Google Sheets file.")
+
+if __name__ == "__main__":
+    main()
