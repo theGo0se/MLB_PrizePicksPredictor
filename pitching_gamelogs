@@ -1,0 +1,121 @@
+import statsapi
+import csv
+import datetime
+
+def get_all_game_pks(start_date, end_date):
+    """
+    Fetch all game IDs (gamePks) for the specified date range.
+    """
+    schedule_data = statsapi.schedule(start_date=start_date, end_date=end_date)
+    game_pks = [(game["game_id"], game["game_date"]) for game in schedule_data]
+    return game_pks
+
+def fetch_all_pitching_data(start_date, end_date):
+    """
+    Fetch all pitching data from boxscore data for games in the specified date range.
+    """
+    game_pks = get_all_game_pks(start_date, end_date)
+    print(f"Found {len(game_pks)} games in the date range {start_date} to {end_date}.")
+
+    all_players_data = []
+    all_stat_keys = set()
+
+    # Iterate through each game's boxscore
+    for gamePk, game_date in game_pks:
+        print(f"Fetching boxscore data for game ID: {gamePk}")
+        try:
+            boxscore = statsapi.boxscore_data(gamePk)
+
+            # Fetch team information
+            away_team = boxscore.get("away", {}).get("team", {})
+            home_team = boxscore.get("home", {}).get("team", {})
+
+            away_team_name = away_team.get("teamName", "Unknown Team")
+            away_team_id = away_team.get("id", "Unknown ID")
+
+            home_team_name = home_team.get("teamName", "Unknown Team")
+            home_team_id = home_team.get("id", "Unknown ID")
+
+            # Process away team pitchers
+            for player_id, player_info in boxscore["away"]["players"].items():
+                stats = player_info.get("stats", {}).get("pitching", {})
+                all_stat_keys.update(stats.keys())  # Collect all stat keys dynamically
+
+                # Adjust playerId to exclude the first two characters
+                adjusted_player_id = player_id[2:]
+
+                player_data = {
+                    "gamePk": gamePk,
+                    "gameDate": game_date,
+                    "team": away_team_name,
+                    "teamId": away_team_id,
+                    "playerId": adjusted_player_id,  # Adjusted playerId
+                    "playerName": player_info["person"]["fullName"],
+                    "position": player_info["position"]["abbreviation"],
+                    **stats  # Flatten stats dictionary into individual columns
+                }
+                all_players_data.append(player_data)
+
+            # Process home team pitchers
+            for player_id, player_info in boxscore["home"]["players"].items():
+                stats = player_info.get("stats", {}).get("pitching", {})
+                all_stat_keys.update(stats.keys())  # Collect all stat keys dynamically
+
+                # Adjust playerId to exclude the first two characters
+                adjusted_player_id = player_id[2:]
+
+                player_data = {
+                    "gamePk": gamePk,
+                    "gameDate": game_date,
+                    "team": home_team_name,
+                    "teamId": home_team_id,
+                    "playerId": adjusted_player_id,  # Adjusted playerId
+                    "playerName": player_info["person"]["fullName"],
+                    "position": player_info["position"]["abbreviation"],
+                    **stats  # Flatten stats dictionary into individual columns
+                }
+                all_players_data.append(player_data)
+
+        except Exception as e:
+            print(f"Error fetching boxscore data for game ID {gamePk}: {e}")
+
+    return all_players_data, all_stat_keys
+
+def export_to_csv(data, stat_keys, file_path):
+    """
+    Export player data to a CSV file.
+    """
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    print(f"Exporting data to {file_path}...")
+
+    # Combine standard fields with dynamic stat keys
+    columns = ["gamePk", "gameDate", "team", "teamId", "playerId", "playerName", "position","strikeOuts", "baseOnBalls", "hits", "inningsPitched"] + list(stat_keys) + ["timestamp"]
+
+    with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+        writer = csv.DictWriter(file, fieldnames=columns)
+        writer.writeheader()
+        for row in data:
+            row["timestamp"] = today  # Add today's timestamp
+            writer.writerow(row)
+
+    print(f"Data successfully exported to {file_path}.")
+
+def main():
+    """
+    Main function to fetch pitcher stats and export them to a CSV file.
+    """
+    # Define the date range
+    start_date = "2025-03-27"
+    end_date = datetime.datetime.now().strftime("%Y-%m-%d")  # Today's date
+
+    # Define the export file path
+    file_path = r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\pitching_gamelogs.csv"
+
+    # Fetch all pitcher data
+    players_data, stat_keys = fetch_all_pitching_data(start_date, end_date)
+
+    # Export data to CSV
+    export_to_csv(players_data, stat_keys, file_path)
+
+if __name__ == "__main__":
+    main()
