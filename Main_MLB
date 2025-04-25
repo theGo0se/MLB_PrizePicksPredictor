@@ -1,0 +1,30 @@
+import import_ipynb
+import PrizePicks_MLB_Scrape
+import mlb_player_status
+import hitting_gamelogs
+import pitching_gamelogs
+import PyBaseball_TeamLogs
+
+def main():
+    print("Starting PrizePicks scraper...")
+    PrizePicks_MLB_Scrape.main()
+    print("PrizePicks scraper completed.")
+    
+    print("Starting ESPN injuries scraper...")
+    mlb_player_status.main()
+    print("ESPN injuries scraper completed.")
+    
+    print("Starting NBA game logs scraper...")
+    hitting_gamelogs.main()
+    print("MLB hitting logs scraper completed.")
+    
+    print("Starting NBA team game logs scraper...")
+    pitching_gamelogs.main()
+    print("MLB pitching game logs scraper completed.")
+    
+    print("Starting NBA team game logs scraper...")
+    PyBaseball_TeamLogs.main()
+    print("MLB team game logs scraper completed.")
+
+if __name__ == "__main__":
+    main()
