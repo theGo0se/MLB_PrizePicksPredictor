@@ -1,0 +1,103 @@
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import os
+
+_URL = "https://www.baseball-reference.com/teams/tgl.cgi?team={}&t={}&year={}"
+
+# List of MLB team abbreviations
+TEAM_ABBREVIATIONS = [
+    "ATL", "ARI", "BAL", "BOS", "CHC", "CHW", "CIN", "CLE", "COL", "DET",
+    "HOU", "KCR", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY", "OAK",
+    "PHI", "PIT", "SDP", "SEA", "SFG", "STL", "TBR", "TEX", "TOR", "WSN"
+]
+
+def get_table(season, team, log_type):
+    t_param = "b" if log_type == "batting" else "p"
+    content = requests.get(_URL.format(team, t_param, season)).content
+    soup = BeautifulSoup(content, "lxml")
+    table_id = "team_{}_gamelogs".format(log_type)
+    table = soup.find("table", attrs=dict(id=table_id))
+    if table is None:
+        raise RuntimeError(f"Table with expected id '{table_id}' not found for team {team}.")
+    data = pd.read_html(str(table))[0]
+    return data
+
+def postprocess(data):
+    data.drop("Rk", axis=1, inplace=True)  # drop index column
+    repl_dict = {
+        "Gtm": "Game",
+        "Unnamed: 3": "Home",
+        "#": "NumPlayers",
+        "Opp. Starter (GmeSc)": "OppStart",
+        "Pitchers Used (Rest-GameScore-Dec)": "PitchersUsed"
+    }
+    data.rename(repl_dict, axis=1, inplace=True)
+    data["Home"] = ~data["Home"].isnull()  # '@' if away, empty if home
+    data = data[data["Game"].str.match("\d+")]  # drop empty month rows
+    data = data.apply(pd.to_numeric, errors="ignore")
+    data["Game"] = data["Game"].astype(int)
+    return data.reset_index(drop=True)
+
+def append_to_csv(data, file_path):
+    """
+    Append the DataFrame to a CSV file. If the file doesn't exist, create it.
+
+    :param data: pandas DataFrame to append
+    :param file_path: Path to the CSV file
+    """
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        # If the file doesn't exist, save the DataFrame as a new file
+        data.to_csv(file_path, index=False)
+        print(f"File created and data saved to {file_path}")
+    else:
+        # If the file exists, append the data without writing headers
+        data.to_csv(file_path, mode='a', header=False, index=False)
+        print(f"Data appended to {file_path}")
+
+def team_game_logs(season, team, log_type="batting"):
+    """
+    Get Baseball Reference batting or pitching game logs for a team-season.
+
+    :param season: year of logs
+    :param team: team abbreviation
+    :param log_type: "batting" (default) or "pitching"
+    :return: pandas.DataFrame of game logs
+    """
+    if log_type not in ("batting", "pitching"):
+        raise ValueError("`log_type` must be either 'batting' or 'pitching'.")
+    data = get_table(season, team, log_type)
+    data = postprocess(data)
+    return data
+
+def all_teams_game_logs(season, log_type="batting", file_path=None):
+    """
+    Fetch game logs for all MLB teams for a given season and append them to a single CSV file.
+
+    :param season: year of logs
+    :param log_type: "batting" (default) or "pitching"
+    :param file_path: Path to save the CSV file
+    """
+    for team in TEAM_ABBREVIATIONS:
+        print(f"Fetching {log_type} game logs for {team} in {season}...")
+        try:
+            # Fetch the game logs for the team
+            data = team_game_logs(season, team, log_type)
+            
+            # Add a team column for identification
+            data['Team'] = team
+            
+            # Append the data to the CSV file
+            append_to_csv(data, file_path)
+        except Exception as e:
+            print(f"Failed to fetch game logs for {team}: {e}")
+
+# Example usage
+if __name__ == "__main__":
+    season = 2025
+    log_type = "batting"  # Can be "batting" or "pitching"
+    file_path = r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\all_teams_batting_gamelogs_2025.csv"
+    
+    # Fetch and append logs for all teams
+    all_teams_game_logs(season, log_type, file_path)
