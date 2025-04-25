@@ -1,0 +1,146 @@
+from IPython.core.interactiveshell import InteractiveShell
+InteractiveShell.ast_node_interactivity = "all"
+
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import undetected_chromedriver as uc
+import time
+import pandas as pd
+from bs4 import BeautifulSoup
+from datetime import datetime
+
+def setup_driver():
+    chrome_options = uc.ChromeOptions()
+    prefs = {"profile.default_content_setting_values.geolocation": 1}  # Allow location
+    chrome_options.add_experimental_option("prefs", prefs)
+    driver = uc.Chrome(options=chrome_options)
+    return driver
+
+def open_website(driver, url):
+    driver.get(url)
+    time.sleep(5)
+
+def handle_captcha(driver):
+    try:
+        captcha_frame = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
+        )
+        print("CAPTCHA detected. Please solve the CAPTCHA manually.")
+        WebDriverWait(driver, 300).until(
+            EC.invisibility_of_element(captcha_frame)
+        )
+        print("CAPTCHA solved.")
+    except Exception:
+        print("No CAPTCHA found or already solved.")
+
+def close_popup(driver):
+    try:
+        close_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CLASS_NAME, "close"))
+        )
+        close_button.click()
+        print("Popup closed successfully.")
+    except Exception:
+        print("No popup found or already closed.")
+
+def click_mlb_category(driver):
+    try:
+        mlb_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(@class, 'league-old')]//img[@alt='MLB']"))
+        )
+        driver.execute_script("arguments[0].click();", mlb_button)
+        print("MLB button clicked successfully.")
+    except Exception as e:
+        print("Could not find or click the MLB button:", e)
+
+def scrape_stat_category(driver, category):
+    ppPlayers = []
+    try:
+        # Click the stat category button using exact text match
+        stat_button = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, f"//button[normalize-space(text())='{category}']"))
+        )
+        driver.execute_script("arguments[0].click();", stat_button)
+        print(f"Clicked '{category}' category.")
+    except Exception as e:
+        print(f"Could not find or click '{category}' category:", e)
+        return ppPlayers
+
+    time.sleep(5)
+    try:
+        projectionsPP = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.border-soFresh-130"))
+        )
+
+        for projections in projectionsPP:
+            html = projections.get_attribute('outerHTML')
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Extract player name
+            name_element = soup.find(id="test-player-name")
+            names = name_element.text if name_element else 'N/A'
+
+            # Extract stat value
+            value_element = soup.find(class_="heading-md")
+            value = value_element.text if value_element else 'N/A'
+
+            # Extract projection type
+            proj_type_element = soup.find("div", {"class": "text-soClean-140 max-w-[100px] self-center text-left text-xs leading-[14px]"})
+            proj_type = proj_type_element.text.strip() if proj_type_element else 'N/A'
+
+            # Extract payout type
+            try:
+                payout = soup.find('div', {'class': 'absolute -right-4 left-1/2 top-12'}).find('img').get('alt')
+            except AttributeError:
+                payout = 'Standard'
+
+            # Extract matchup
+            matchup_element = soup.find("time", {"class": "text-soClean-140 body-sm"})
+            matchup = matchup_element.text if matchup_element else 'N/A'
+
+            # Append player data
+            players = {
+                'Category': category,
+                'Name': names,
+                'Value': value,
+                'Matchup': matchup,
+                'Payout': payout
+            }
+            ppPlayers.append(players)
+    except Exception as e:
+        print(f"Could not extract player projections for '{category}' category:", e)
+
+    return ppPlayers
+
+def save_to_csv(ppPlayers, file_path):
+    dfProps = pd.DataFrame(ppPlayers)
+    dfProps['Timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    dfProps.to_csv(file_path, index=False)
+    print(f"All categories have been scraped and saved to '{file_path}'.")
+
+def main():
+    driver = setup_driver()
+    open_website(driver, "https://app.prizepicks.com/")
+    handle_captcha(driver)
+    close_popup(driver)
+    click_mlb_category(driver)
+
+    # Updated stat categories
+    stat_categories = [
+        "Total Bases", "Hits+Runs+RBIs", "Home Runs", "Doubles", "Hits",
+        "Singles", "Walks", "RBIs", "Runs", "Hits Allowed", "Pitcher Strikeouts",
+        "Walks Allowed", "Stolen Bases", "Pitching Outs"
+    ]
+    all_players = []
+
+    # Scrape each stat category
+    for category in stat_categories:
+        players = scrape_stat_category(driver, category)
+        all_players.extend(players)
+
+    # Save all data to CSV
+    save_to_csv(all_players, r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\prizepicks_mlb_props.csv")
+
+if __name__ == "__main__":
+    main()
