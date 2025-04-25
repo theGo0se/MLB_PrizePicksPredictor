@@ -1,0 +1,88 @@
+from selenium.webdriver.common.by import By 
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import undetected_chromedriver as uc
+import pandas as pd
+from datetime import datetime
+
+def setup_driver():
+    chrome_options = uc.ChromeOptions()
+    driver = uc.Chrome(options=chrome_options)
+    return driver
+
+def open_website(driver, url):
+    print("Opening the website...")
+    driver.get(url)
+
+def wait_for_table(driver):
+    print("Waiting for the injury table to load...")
+    try:
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "Table"))
+        )
+        print("Injury table loaded.")
+        return True
+    except:
+        print("Table not found. Exiting...")
+        driver.quit()
+        return False
+
+def find_tables(driver):
+    tables = driver.find_elements(By.CLASS_NAME, "Table")
+    if not tables:
+        print("No injury tables found.")
+        driver.quit()
+        return None
+    return tables
+
+def extract_data_from_tables(tables):
+    players_data = []
+    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get current timestamp
+
+    for table in tables:
+        rows = table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header row
+
+        for row in rows:
+            cols = row.find_elements(By.TAG_NAME, "td")
+            if len(cols) >= 5:
+                name = cols[0].text.strip()
+                position = cols[1].text.strip()  # Position column
+                est_return_date = cols[2].text.strip()
+                status = cols[3].text.strip()
+                comment = cols[4].text.strip()
+
+                print(f"Extracted: {name}, {position}, {status}, {est_return_date}, {comment}, {current_timestamp}")
+
+                players_data.append([name, position, status, est_return_date, comment, current_timestamp])
+    return players_data
+
+def save_to_csv(data, file_path):
+    df = pd.DataFrame(data, columns=["Name", "Position", "Status", "Est Return Date", "Comment", "Timestamp"])
+    if not df.empty:
+        df.to_csv(file_path, index=False)
+        print(f"Data successfully saved to {file_path}")
+    else:
+        print("No data scraped. Check the website structure.")
+
+def main():
+    url = "https://www.espn.com/mlb/injuries"
+    csv_file_path = r"C:\Users\11487\OneDrive\Documents\Python\Prize Picks Project\MLB\player_status.csv"
+
+    driver = setup_driver()
+    open_website(driver, url)
+
+    if not wait_for_table(driver):
+        return
+
+    tables = find_tables(driver)
+    if tables is None:
+        return
+
+    players_data = extract_data_from_tables(tables)
+    save_to_csv(players_data, csv_file_path)
+
+    driver.quit()
+    print("Driver closed.")
+
+if __name__ == "__main__":
+    main()
